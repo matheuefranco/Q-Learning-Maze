@@ -8,6 +8,13 @@ import pickle
 import os
 import argparse
 
+parser_semente = argparse.ArgumentParser(add_help=False)
+parser_semente.add_argument("--seed", type=int, help="semente para reproduzir o ambiente e o treinamento")
+argumentos_semente, _ = parser_semente.parse_known_args()
+if argumentos_semente.seed is not None:
+    random.seed(argumentos_semente.seed)
+    np.random.seed(argumentos_semente.seed)
+
 # Inicializa o pygame para evitar problemas de display
 pygame.init()
 tamanho_grade = 7
@@ -23,13 +30,72 @@ RECOMPENSA_OBJETIVO = 10
 RECOMPENSA_PAREDE = -10
 
 # Constantes de hiperparâmetros
-TAXA_APRENDIZADO = 0.01
+TAXA_APRENDIZADO = 0.1
 FATOR_DESCONTO = 0.9
 PROB_EXPLORACAO_INICIAL = 0.25
+PROBABILIDADE_EXPLORACAO_MINIMA = 0.05
 EPISODIOS_PADRAO = 1000
 
 # Velocidade da demonstração (segundos de pausa por frame)
 TEMPO_PAUSA_DEMO = 0.1
+
+
+def objetivo_alcancavel(matriz_recompensa):
+    """Verifica por BFS se existe caminho livre do início até o objetivo."""
+    inicio = (0, 0)
+    objetivo = (tamanho_grade - 1, tamanho_grade - 1)
+    fila = [inicio]
+    visitados = {inicio}
+
+    while fila:
+        linha, coluna = fila.pop(0)
+        if (linha, coluna) == objetivo:
+            return True
+
+        vizinhos = (
+            (linha - 1, coluna),
+            (linha + 1, coluna),
+            (linha, coluna - 1),
+            (linha, coluna + 1),
+        )
+        for proxima_linha, proxima_coluna in vizinhos:
+            proxima_posicao = (proxima_linha, proxima_coluna)
+            if (
+                0 <= proxima_linha < tamanho_grade
+                and 0 <= proxima_coluna < tamanho_grade
+                and matriz_recompensa[proxima_linha, proxima_coluna] != RECOMPENSA_PAREDE
+                and proxima_posicao not in visitados
+            ):
+                visitados.add(proxima_posicao)
+                fila.append(proxima_posicao)
+
+    return False
+
+
+def gerar_ambiente():
+    """Gera paredes aleatórias e repete mapas sem caminho até o objetivo."""
+    while True:
+        matriz_recompensa = np.full((tamanho_grade, tamanho_grade), RECOMPENSA_LIVRE)
+        cores_ambiente = [(51, 51, 51) for _ in range(tamanho_grade**2)]
+        terminais = []
+        posicoes_parede = [
+            (i, j)
+            for i in range(tamanho_grade)
+            for j in range(tamanho_grade)
+            if (i, j) not in ((0, 0), (tamanho_grade - 1, tamanho_grade - 1))
+        ]
+
+        for i, j in random.sample(posicoes_parede, 10):
+            matriz_recompensa[i, j] = RECOMPENSA_PAREDE
+            cores_ambiente[tamanho_grade * i + j] = (255, 0, 0)
+            terminais.append(tamanho_grade * i + j)
+
+        matriz_recompensa[tamanho_grade - 1, tamanho_grade - 1] = RECOMPENSA_OBJETIVO
+        cores_ambiente[tamanho_grade**2 - 1] = (0, 255, 0)
+        terminais.append(tamanho_grade**2 - 1)
+
+        if objetivo_alcancavel(matriz_recompensa):
+            return matriz_recompensa, cores_ambiente, terminais
 
 
 # ------------------------------------------------------------
@@ -47,27 +113,11 @@ def carregar_imagem_agente(nome_arquivo="robot.png", tamanho=80):
 agente_img = carregar_imagem_agente()
 
 # Inicialização do ambiente (cores, recompensas e terminais)
-cores = [(51,51,51) for i in range(tamanho_grade**2)]
 # Esquema de recompensas:
 # - caminho livre: 0
 # - objetivo (verde): +10
 # - parede/obstáculo (vermelho): -10
-recompensa = np.full((tamanho_grade, tamanho_grade), RECOMPENSA_LIVRE)
-estados_terminais = []
-penalidades = 10
-while penalidades != 0:
-    i = r(0,tamanho_grade-1)
-    j = r(0,tamanho_grade-1)
-    # Apenas substitui células livres (== RECOMPENSA_LIVRE) que não sejam início e nem objetivo
-    if recompensa[i,j] == RECOMPENSA_LIVRE and [i,j] != [0,0] and [i,j] != [tamanho_grade-1,tamanho_grade-1]:
-        recompensa[i,j] = RECOMPENSA_PAREDE
-        penalidades-=1
-        cores[tamanho_grade*i+j] = (255,0,0)
-        estados_terminais.append(tamanho_grade*i+j)
-# Objetivo com +10
-recompensa[tamanho_grade-1,tamanho_grade-1] = RECOMPENSA_OBJETIVO
-cores[tamanho_grade**2 - 1] = (0,255,0)
-estados_terminais.append(tamanho_grade**2 - 1)
+recompensa, cores, estados_terminais = gerar_ambiente()
 
 # Tabela Q inicial (pode ser substituída ao carregar de arquivo)
 tabela_Q = np.zeros((tamanho_grade**2,4))
@@ -163,7 +213,7 @@ def episodio():
     else:
         tabela_Q[estado_atual,acao] += taxa_aprendizado*(rwd - tabela_Q[estado_atual,acao])
         posicao_atual = [0,0]
-        probabilidade_exploracao -= 1e-3
+        probabilidade_exploracao = max(PROBABILIDADE_EXPLORACAO_MINIMA, probabilidade_exploracao - 1e-3)
         return True, rwd
 
 
@@ -287,6 +337,7 @@ def escolher_modo():
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--mode", choices=["load", "train"], help="load: carrega Q.txt; train: treina e salva")
     parser.add_argument("--episodes", type=int, default=EPISODIOS_PADRAO, help="episódios para treinar (se --mode=train)")
+    parser.add_argument("--seed", type=int, help="semente para reproduzir o ambiente e o treinamento")
     try:
         args, _ = parser.parse_known_args()
     except SystemExit:

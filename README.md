@@ -54,7 +54,12 @@ O script principal é `ReforceLearning.py`. Existem dois modos: `train` (treinar
 python .\ReforceLearning.py --mode train --episodes 100
 ```
 - `--episodes` é opcional; se omitido, usa o padrão definido no código.
+- `--seed` é opcional; use um inteiro para reproduzir o mapa e a sequência aleatória do treinamento, por exemplo:
+  ```powershell
+  python .\ReforceLearning.py --mode train --episodes 100 --seed 42
+  ```
 - Ao final do treino, a Q-Table é impressa e `Q.txt` é gravado com a tabela e o ambiente.
+- O gerador verifica por busca em largura (BFS) se há caminho do início até o objetivo e gera outro mapa caso as paredes bloqueiem o percurso.
 
 ### Carregar e demonstrar (usa `Q.txt`)
 ```powershell
@@ -83,6 +88,7 @@ Os principais parâmetros estão no topo do arquivo `ReforceLearning.py`:
   - `FATOR_DESCONTO`
   - `PROB_EXPLORACAO_INICIAL`
   - `EPISODIOS_PADRAO`
+  - `PROBABILIDADE_EXPLORACAO_MINIMA`
 - Velocidade da demonstração:
   - `TEMPO_PAUSA_DEMO` (em segundos por frame)
 - Imagem do agente (opcional):
@@ -100,8 +106,8 @@ Os principais parâmetros estão no topo do arquivo `ReforceLearning.py`:
 - Cada episódio inicia no estado inicial e termina ao atingir um estado terminal (parede/objetivo).
 
 ## Dicas
-- Como o labirinto é gerado aleatoriamente, use `--mode load` para reproduzir a mesma política e ambiente salvos em `Q.txt`.
-- Se quiser deixar o ambiente reproduzível, você pode fixar uma semente com `random.seed(...)` e `np.random.seed(...)` no início do script.
+- Para reproduzir um treino e seu ambiente aleatório, execute-o novamente com o mesmo valor de `--seed`.
+- `--mode load` continua carregando o ambiente e a Q-Table salvos em `Q.txt`.
 
 ## Problemas comuns
 - "pygame" não abre a janela: verifique se está rodando localmente (não por SSH) e se o Pygame foi instalado corretamente.

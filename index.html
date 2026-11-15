@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Q-Learning passo a passo: labirinto 4×4</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef2f1;--panel:#fff;--ink:#17302f;--mute:#566a69;--line:#c4d3d1;--pos:#1f8a5b;--neg:#c0392b;--agent:#2457d6;--hi:#e0a800;--cell:#f7faf9;--wall:#f3d3cf;--goal:#cdeedd;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1a1b;--panel:#152526;--ink:#e6f0ee;--mute:#9bb0ad;--line:#2e4545;--pos:#3ccf8e;--neg:#ff6b5b;--agent:#6c93ff;--hi:#ffd23f;--cell:#1a2f30;--wall:#4a2522;--goal:#17432f}}
+:root[data-theme="dark"]{--bg:#0e1a1b;--panel:#152526;--ink:#e6f0ee;--mute:#9bb0ad;--line:#2e4545;--pos:#3ccf8e;--neg:#ff6b5b;--agent:#6c93ff;--hi:#ffd23f;--cell:#1a2f30;--wall:#4a2522;--goal:#17432f}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.5 "Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:1120px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:clamp(1.5rem,3.4vw,2.1rem);line-height:1.15;margin:0 0 4px}
+h2{font-size:1.25rem;margin:0 0 6px}
+.sub{color:var(--mute);margin:0 0 16px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 13px;cursor:pointer}
+button:hover{border-color:var(--ink)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--agent);outline-offset:2px}
+button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+button.go{background:var(--agent);color:#fff;border-color:var(--agent);font-weight:700}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:840px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.card:last-child{margin-bottom:0}
+svg.board{width:100%;max-width:520px;display:block;margin:0 auto}
+.board text{fill:var(--ink);text-anchor:middle;font-family:inherit}
+.v{font-size:14px;font-weight:700}.big{font-size:44px}.big2{font-size:26px;font-weight:700}.arr{font-size:38px;font-weight:700}
+.lab{font-size:16px;font-weight:700}.idx{font-size:13px;fill:var(--mute)}
+#agent{transition:transform .35s ease}
+@media (prefers-reduced-motion:reduce){#agent{transition:none}}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:8px}
+.mute{color:var(--mute)}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}
+.sl{display:grid;grid-template-columns:auto 1fr 3ch;gap:10px;align-items:center;margin:4px 0}
+.sl input{width:100%;accent-color:var(--agent)}
+.f{background:var(--cell);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:8px 0;font-variant-numeric:tabular-nums;overflow-x:auto;white-space:nowrap}
+.legend{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:8px;color:var(--mute);font-size:15px}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:5px}
+.chart{width:100%;height:auto;display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Q-Learning passo a passo</h1>
+<p class="sub">Um agente aprende o caminho em um labirinto 4×4 só com tentativa, erro e recompensas.</p>
+<div class="tabs" id="tabs" role="tablist"></div>
+
+<div class="grid">
+  <div>
+    <div class="card">
+      <svg class="board" viewBox="0 0 480 480" role="img" aria-label="Labirinto 4 por 4">
+        <g id="cells"></g>
+        <g id="agent"><circle r="15" fill="var(--agent)" stroke="#fff" stroke-width="3"/><circle cx="-5" cy="-3" r="2.6" fill="#fff"/><circle cx="5" cy="-3" r="2.6" fill="#fff"/></g>
+      </svg>
+      <div class="legend"><span><i style="background:var(--agent)"></i>agente</span><span><i style="background:var(--goal);border:1px solid var(--pos)"></i>saída (+10)</span><span><i style="background:var(--wall);border:1px solid var(--neg)"></i>parede (−10)</span></div>
+    </div>
+    <div class="card" id="chartCard">
+      <b>Resultado de cada episódio</b>
+      <svg class="chart" id="chart" viewBox="0 0 300 90" role="img" aria-label="Gráfico de episódios"></svg>
+      <div class="mute" id="stats" style="font-size:15px"></div>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h2 id="stTitle"></h2>
+      <p id="stText" style="margin:0"></p>
+      <div class="nav"><button id="prev">Anterior</button><span class="mute" id="stCount"></span><button id="next" class="go">Próximo</button></div>
+    </div>
+
+    <div class="card" id="ctl" hidden>
+      <div class="row">
+        <button id="b1" class="go">1 passo</button>
+        <button id="bE">1 episódio</button>
+        <button id="b10">10 episódios</button>
+        <button id="b100">100 episódios</button>
+        <button id="bR">Reiniciar</button>
+      </div>
+      <div class="row" id="views" role="group" aria-label="Visão do tabuleiro">
+        <button data-v="q">Valores Q</button><button data-v="max">Melhor valor</button><button data-v="pol">Política</button>
+      </div>
+      <div class="row" id="polRow" hidden><button id="bF" class="go">Seguir a política</button><span id="msg" class="mute" role="status"></span></div>
+      <div class="sl"><label for="sa">α (confiança)</label><input id="sa" type="range" min="0.05" max="1" step="0.05" value="0.5"><output id="oa">0.5</output></div>
+      <div class="sl"><label for="sg">γ (futuro)</label><input id="sg" type="range" min="0" max="0.99" step="0.01" value="0.9"><output id="og">0.9</output></div>
+      <div class="sl"><label for="se">ε (explorar)</label><input id="se" type="range" min="0" max="1" step="0.05" value="0.3"><output id="oe">0.3</output></div>
+    </div>
+
+    <div class="card" id="infoCard" hidden>
+      <b>A última atualização da Tabela Q</b>
+      <div id="info"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const N=4,GOAL=15,WALLS=[5,11,13];
+const NAME=['cima','baixo','esquerda','direita'],ARW=['↑','↓','←','→'];
+const DR=[-1,1,0,0],DC=[0,0,-1,1];
+const isT=s=>s===GOAL||WALLS.includes(s);
+const rew=s=>s===GOAL?10:WALLS.includes(s)?-10:0;
+const valid=(s,a)=>{const r=(s>>2)+DR[a],c=(s&3)+DC[a];return r>=0&&r<N&&c>=0&&c<N};
+const nxt=(s,a)=>s+DR[a]*4+DC[a];
+const acts=s=>[0,1,2,3].filter(a=>valid(s,a));
+const P={a:.5,g:.9,e:.3};
+const fmt=v=>Math.abs(v)<.05?'0':v.toFixed(1);
+const num=v=>v<0?'('+v.toFixed(2)+')':v.toFixed(2);
+const pick=a=>a[Math.random()*a.length|0];
+let Q,pos,steps,hist,last,view='env',cur=0,showR=false,busy=false;
+
+const STEPS=[
+{t:'O labirinto',v:'env',r:false,p:'São 16 estados, numerados de 0 a 15 (linha × 4 + coluna). O agente começa no estado 0 e a saída é a estrela verde. As 3 paredes vermelhas encerram o episódio. O agente não enxerga o mapa: só sabe em que estado está.'},
+{t:'Recompensas',v:'env',r:true,p:'Chegar à saída dá +10, bater na parede dá −10 e andar por casas livres dá 0. Ninguém diz ao agente como chegar lá: só se o resultado foi bom ou ruim.'},
+{t:'A Tabela Q',v:'q',r:true,p:'Cada casa tem 4 triângulos, um por ação (cima, baixo, esquerda, direita). O número é a nota daquela ação naquele estado: quão boa ela é? Tudo começa em 0, então o agente não sabe nada. No código é a matriz de 16 linhas × 4 colunas.'},
+{t:'Uma atualização',v:'q',r:true,p:'A cada passo o agente corrige a nota da ação que usou. Clique em “1 passo” várias vezes e leia a conta no quadro abaixo. Enquanto r = 0 e o próximo estado vale 0, a nota continua 0. α é o quanto ele confia na novidade e γ, o quanto valoriza o futuro.'},
+{t:'O valor se espalha',v:'q',r:true,p:'Rode um episódio por vez (termina na saída ou numa parede). Quando o agente acerta a saída pela primeira vez, a ação que levou até lá ganha nota positiva. No episódio seguinte, quem leva até esse estado também ganha, e o valor vaza da saída para trás. Parede faz o mesmo com nota negativa.'},
+{t:'Muitos episódios',v:'max',r:true,p:'Rode 100 episódios. Na visão “Melhor valor”, cada casa mostra seu maior Q: o verde forma um caminho de brilho até a saída. No gráfico, os círculos vermelhos (paredes) vão ficando raros e os verdes dominam.'},
+{t:'A política',v:'pol',r:true,p:'A política é o que o agente faz com a tabela: em cada estado, a ação de maior Q. As setas mostram o que ele aprendeu. Clique em “Seguir a política”: sem exploração e sem mexer na tabela. Se ele errar, treine mais episódios.'},
+{t:'Experimente',v:null,r:true,p:'Mude um parâmetro por vez, clique em Reiniciar e treine de novo. α baixo: aprende devagar. γ = 0: só enxerga a recompensa imediata e não aprende o caminho. ε = 0: nunca explora e tende a repetir o mesmo trajeto. ε alto: explora demais e aproveita pouco.'}
+];
+
+function reset(){Q=Array.from({length:16},()=>[0,0,0,0]);pos=0;steps=0;hist=[];last=null;$('msg').textContent=''}
+function greedy(s){const v=acts(s),m=Math.max(...v.map(a=>Q[s][a]));return pick(v.filter(a=>Q[s][a]===m))}
+function choose(s){return Math.random()<P.e?[pick(acts(s)),true]:[greedy(s),false]}
+function step(){
+  if(isT(pos)){pos=0;steps=0}
+  const s=pos,[a,ex]=choose(s),n=nxt(s,a),r=rew(n),t=isT(n),old=Q[s][a];
+  const fut=t?0:Math.max(...acts(n).map(x=>Q[n][x])),nv=old+P.a*(r+P.g*fut-old);
+  Q[s][a]=nv;steps++;pos=n;last={s,a,n,r,t,old,fut,nv,ex};
+  if(t)hist.push({steps,ok:n===GOAL});
+  return t;
+}
+function episode(){pos=0;steps=0;let c=0;while(!step()&&++c<300);if(c>=300)hist.push({steps,ok:false})}
+
+const tri=(a,x,y)=>{const L=x+3,T=y+3,R=x+117,B=y+117,c=x+60,d=y+60,e=[[L,T,R,T],[L,B,R,B],[L,T,L,B],[R,T,R,B]][a];return e[0]+','+e[1]+' '+e[2]+','+e[3]+' '+c+','+d};
+const TP=[[60,22],[60,112],[18,64],[102,64]];
+const col=v=>v>0?'var(--pos)':v<0?'var(--neg)':'none';
+const op=v=>v===0?0:Math.min(.85,.18+Math.abs(v)/10*.67);
+
+function cells(){
+  let h='';
+  for(let s=0;s<16;s++){
+    const x=(s&3)*120,y=(s>>2)*120,cx=x+60;
+    if(s===GOAL){h+=`<rect x="${x+3}" y="${y+3}" width="114" height="114" rx="8" fill="var(--goal)" stroke="var(--pos)" stroke-width="2"/><text class="big" x="${cx}" y="${y+72}">★</text>`+(showR?`<text class="lab" x="${cx}" y="${y+104}">+10</text>`:'');continue}
+    if(WALLS.includes(s)){h+=`<rect x="${x+3}" y="${y+3}" width="114" height="114" rx="8" fill="var(--wall)" stroke="var(--neg)" stroke-width="2"/><text class="big" x="${cx}" y="${y+72}">✕</text>`+(showR?`<text class="lab" x="${cx}" y="${y+104}">−10</text>`:'');continue}
+    h+=`<rect x="${x+3}" y="${y+3}" width="114" height="114" rx="8" fill="var(--cell)" stroke="var(--line)" stroke-width="2"/>`;
+    if(view==='env'){
+      h+=`<text class="idx" x="${x+14}" y="${y+22}">${s}</text>`;
+      if(s===0)h+=`<text class="lab" x="${cx}" y="${y+100}">início</text>`;
+      else if(showR)h+=`<text class="lab" x="${cx}" y="${y+70}" style="fill:var(--mute)">0</text>`;
+    }else if(view==='q'){
+      for(const a of acts(s)){const v=Q[s][a];
+        h+=`<polygon points="${tri(a,x,y)}" fill="${col(v)}" fill-opacity="${op(v)}" stroke="var(--line)" stroke-width="1.5"/><text class="v" x="${x+TP[a][0]}" y="${y+TP[a][1]}">${fmt(v)}</text>`}
+    }else{
+      const vs=acts(s).map(a=>Q[s][a]),m=Math.max(...vs);
+      h+=`<rect x="${x+3}" y="${y+3}" width="114" height="114" rx="8" fill="${col(m)}" fill-opacity="${op(m)}"/>`;
+      if(view==='max')h+=`<text class="big2" x="${cx}" y="${y+70}">${fmt(m)}</text>`;
+      else{const b=acts(s).filter(a=>Q[s][a]===m);
+        h+=`<text class="arr" x="${cx}" y="${y+74}">${b.length===vs.length?'·':b.map(a=>ARW[a]).join('')}</text>`}
+    }
+  }
+  if(view==='q'&&last&&!isT(last.s)){const x=(last.s&3)*120,y=(last.s>>2)*120;
+    h+=`<polygon points="${tri(last.a,x,y)}" fill="none" stroke="var(--hi)" stroke-width="4" stroke-linejoin="round"/>`}
+  $('cells').innerHTML=h;
+}
+
+function info(){
+  const el=$('info'),L=last;
+  if(!L){el.innerHTML='<p class="mute">Nenhuma atualização ainda. Clique em “1 passo”.</p>';return}
+  const sn='S'+L.s,nn='S'+L.n,an=NAME[L.a];
+  el.innerHTML=`<p>No <b>${sn}</b> escolheu <b>${an}</b> (${L.ex?'explorou ao acaso':'seguiu o melhor Q'}), foi para o <b>${nn}</b> e recebeu <b>r = ${L.r}</b>.</p>
+  <div class="f">Q(${sn}, ${an}) ← antigo + α × ( r + γ × melhor Q(${nn}) − antigo )</div>
+  <div class="f">${num(L.old)} + ${P.a} × ( ${num(L.r)} + ${P.g} × ${num(L.fut)} − ${num(L.old)} ) = <b>${num(L.nv)}</b></div>
+  ${L.t?'<p class="mute" style="margin:0">Estado terminal: não existe “depois”, então o termo γ × melhor Q some.</p>':''}`;
+}
+
+function chart(){
+  const last60=hist.slice(-60),M=Math.max(20,...last60.map(h=>h.steps));
+  let h='<line x1="5" y1="82" x2="295" y2="82" stroke="var(--line)"/>';
+  const dx=290/Math.max(60,last60.length);
+  last60.forEach((e,i)=>{h+=`<circle cx="${8+i*dx}" cy="${80-e.steps/M*68}" r="3" fill="${e.ok?'var(--pos)':'var(--neg)'}"/>`});
+  $('chart').innerHTML=h;
+  const l20=hist.slice(-20),ok=l20.filter(e=>e.ok).length;
+  $('stats').textContent=hist.length?`${hist.length} episódios. Nos últimos ${l20.length}, chegou à saída em ${ok}. Altura do círculo = passos.`:'Nenhum episódio terminado ainda.';
+}
+
+function draw(){
+  cells();
+  $('agent').style.transform=`translate(${(pos&3)*120+60}px,${(pos>>2)*120+60}px)`;
+  info();chart();
+  document.querySelectorAll('#views button').forEach(b=>b.classList.toggle('on',b.dataset.v===view));
+}
+
+function go(i){
+  cur=Math.max(0,Math.min(STEPS.length-1,i));
+  const S=STEPS[cur];
+  if(S.v)view=S.v;
+  showR=S.r;
+  $('stTitle').textContent=S.t;$('stText').textContent=S.p;
+  $('stCount').textContent=`${cur+1} de ${STEPS.length}`;
+  $('prev').disabled=cur===0;$('next').disabled=cur===STEPS.length-1;
+  $('ctl').hidden=cur<3;$('infoCard').hidden=cur<3;$('chartCard').hidden=cur<4;
+  $('polRow').hidden=cur<6;
+  document.querySelectorAll('#tabs button').forEach((b,j)=>{b.classList.toggle('on',j===cur);b.setAttribute('aria-selected',j===cur)});
+  draw();
+}
+
+const run=fn=>()=>{if(busy)return;$('msg').textContent='';fn();draw()};
+$('b1').onclick=run(()=>step());
+$('bE').onclick=run(()=>episode());
+$('b10').onclick=run(()=>{for(let i=0;i<10;i++)episode()});
+$('b100').onclick=run(()=>{for(let i=0;i<100;i++)episode()});
+$('bR').onclick=run(()=>reset());
+document.querySelectorAll('#views button').forEach(b=>b.onclick=()=>{view=b.dataset.v;draw()});
+$('bF').onclick=async()=>{
+  if(busy)return;busy=true;pos=0;last=null;$('msg').textContent='';draw();
+  for(let c=0;c<20;c++){
+    await new Promise(r=>setTimeout(r,450));
+    const n=nxt(pos,greedy(pos));pos=n;draw();
+    if(isT(n)){$('msg').textContent=n===GOAL?'Chegou à saída!':'Caiu numa parede: treine mais episódios.';busy=false;return}
+  }
+  $('msg').textContent='Ficou rodando em círculos: treine mais episódios.';busy=false;
+};
+[['sa','a','oa'],['sg','g','og'],['se','e','oe']].forEach(([i,k,o])=>{$(i).oninput=()=>{P[k]=+$(i).value;$(o).textContent=P[k];info()}});
+STEPS.forEach((S,i)=>{const b=document.createElement('button');b.textContent=(i+1)+'. '+S.t;b.setAttribute('role','tab');b.onclick=()=>go(i);$('tabs').appendChild(b)});
+$('prev').onclick=()=>go(cur-1);$('next').onclick=()=>go(cur+1);
+document.addEventListener('keydown',e=>{if(e.target.tagName==='INPUT')return;if(e.key==='ArrowRight')go(cur+1);if(e.key==='ArrowLeft')go(cur-1)});
+reset();go(0);
+</script>
+</body>
+</html>
