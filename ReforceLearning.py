@@ -189,7 +189,7 @@ def selecionar_acao(estado_atual):
         acao = random.choice([i for i,a in enumerate(acoes_possiveis) if a == max(acoes_possiveis)])
         return acao
 
-def episodio():
+def passo_q_learning():
     """Executa um passo de Q-Learning a partir da posicao_atual.
 
     Retorna (terminou, recompensa_da_transicao).
@@ -225,7 +225,7 @@ def treinar_q_learning(episodios=100):
         passos = 0
         terminou = False
         while not terminou:
-            terminou, _ = episodio()
+            terminou, _ = passo_q_learning()
             passos += 1
             # Evita loops infinitos (por segurança)
             if passos > tamanho_grade * tamanho_grade * 4:
